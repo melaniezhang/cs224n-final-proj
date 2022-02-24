@@ -23,20 +23,51 @@ class Embedding(nn.Module):
         hidden_size (int): Size of hidden activations.
         drop_prob (float): Probability of zero-ing out activations
     """
-    def __init__(self, word_vectors, hidden_size, drop_prob):
+    def __init__(self, word_vectors, char_vectors, hidden_size, drop_prob):
         super(Embedding, self).__init__()
         self.drop_prob = drop_prob
         self.embed = nn.Embedding.from_pretrained(word_vectors)
+        self.char_embed = nn.Embedding.from_pretrained(char_vectors)
         self.proj = nn.Linear(word_vectors.size(1), hidden_size, bias=False)
         self.hwy = HighwayEncoder(2, hidden_size)
+        self.cnn = CNN(char_vectors.size(1), hidden_size)
 
-    def forward(self, x):
-        emb = self.embed(x)   # (batch_size, seq_len, embed_size)
-        emb = F.dropout(emb, self.drop_prob, self.training)
-        emb = self.proj(emb)  # (batch_size, seq_len, hidden_size)
-        emb = self.hwy(emb)   # (batch_size, seq_len, hidden_size)
+    def forward(self, w, c):
+        # w is (batch_size, seq_len)
+        w_emb = self.embed(w)   # (batch_size, seq_len, embed_size)
+        w_emb = F.dropout(w_emb, self.drop_prob, self.training)
+        w_emb = self.proj(w_emb)  # (batch_size, seq_len, hidden_size)
+        w_emb = self.hwy(w_emb)   # (batch_size, seq_len, hidden_size)
 
+        """
+        - context_idxs: Indices of the words in the context.
+            Shape (context_len,).
+        - context_char_idxs: Indices of the characters in the context.
+            Shape (context_len, max_word_len).
+            """
+        # c is (batch_size, seq_len, max_word_len)
+        batch_size, seq_len, max_word_len = c.size()
+        c = c.view(batch_size * seq_len, max_word_len)
+        c_emb = self.char_embed(c)  # (batch_size * seq_len, max_word_len, embed_size)
+        c_emb = F.dropout(c_emb, self.drop_prob, self.training)
+        c_emb = c_emb.permute(0, 2, 1)  # (batch_size * seq_len, embed_size, max_word_len)
+        c_emb = self.cnn(c_emb, batch_size, seq_len)  # (batch_size, seq_len, hidden_size)
+
+        emb = torch.cat((w_emb, c_emb), 2)  # (batch_size, seq_len, 2 * hidden_size)
         return emb
+
+
+class CNN(nn.Module):
+    def __init__(self, embed_size, hidden_size):
+        super(CNN, self).__init__()
+        self.hidden_size = hidden_size
+        self.conv2d = nn.Conv2d(embed_size, hidden_size, 5, bias=True)
+
+    def forward(self, x, batch_size, seq_len):
+        x = self.conv2d(x)
+        x = torch.max(F.relu(x), dim=-1)[0]
+        x = x.view(batch_size, seq_len, self.hidden_size)
+        return x
 
 
 class HighwayEncoder(nn.Module):
