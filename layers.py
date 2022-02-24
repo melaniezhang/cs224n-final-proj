@@ -46,13 +46,10 @@ class Embedding(nn.Module):
             Shape (context_len, max_word_len).
             """
         # c is (batch_size, seq_len, max_word_len)
-        batch_size, seq_len, max_word_len = c.size()
-        c = c.view(batch_size * seq_len, max_word_len)
-        c_emb = self.char_embed(c)  # (batch_size * seq_len, max_word_len, embed_size)
+        c_emb = self.char_embed(c)  # (batch_size, seq_len, max_word_len, embed_size)
         c_emb = F.dropout(c_emb, self.drop_prob, self.training)
-        c_emb = c_emb.permute(0, 2, 1)  # (batch_size * seq_len, embed_size, max_word_len)
-        c_emb = self.cnn(c_emb, batch_size, seq_len)  # (batch_size, seq_len, hidden_size)
-
+        c_emb = c_emb.permute(0, 3, 1, 2)  # (batch_size, embed_size, seq_len, max_word_len)
+        c_emb = self.cnn(c_emb)  # (batch_size, seq_len, hidden_size)
         emb = torch.cat((w_emb, c_emb), 2)  # (batch_size, seq_len, 2 * hidden_size)
         return emb
 
@@ -61,12 +58,14 @@ class CNN(nn.Module):
     def __init__(self, embed_size, hidden_size):
         super(CNN, self).__init__()
         self.hidden_size = hidden_size
-        self.conv1d = nn.Conv1d(embed_size, hidden_size, 5, bias=True)
+        self.conv2d = nn.Conv2d(embed_size, hidden_size, (1, 5), bias=True)
 
-    def forward(self, x, batch_size, seq_len):
-        x = self.conv1d(x)  # (batch_size * seq_len, hidden_size, l_out)
-        x = torch.max(F.relu(x), dim=-1)[0]  # (batch_size * seq_len, hidden_size)
-        x = x.view(batch_size, seq_len, self.hidden_size)
+    def forward(self, x):
+        # x is size (batch_size, embed_size, seq_len, max_word_len)
+        x = self.conv2d(x)  # (batch_size, hidden_size, seq_len, w_out)
+        # padding=0, dilation=1, kernel_size[0]=1 so h_out=h_in=seq_len
+        x = torch.max(F.relu(x), dim=-1)[0]  # (batch_size, hidden_size, seq_len)
+        x = x.permute(0, 2, 1)  # (batch_size, seq_len, hidden_size)
         return x
 
 
