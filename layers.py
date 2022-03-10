@@ -180,8 +180,10 @@ class BiDAFAttention(nn.Module):
         s2 = masked_softmax(s, c_mask, dim=1)       # (batch_size, c_len, q_len)
 
         # (bs, c_len, q_len) x (bs, q_len, hid_size) => (bs, c_len, hid_size)
+        # for each context word in each batch, have weighted sum of the question hidden states
         a = torch.bmm(s1, q)
         # (bs, c_len, c_len) x (bs, c_len, hid_size) => (bs, c_len, hid_size)
+        # for each context word in each batch, have weighted sum of the context hidden states
         b = torch.bmm(torch.bmm(s1, s2.transpose(1, 2)), c)
 
         x = torch.cat([c, a, c * a, c * b], dim=2)  # (bs, c_len, 4 * hid_size)
@@ -198,6 +200,58 @@ class BiDAFAttention(nn.Module):
 
         See Also:
             Equation 1 in https://arxiv.org/abs/1611.01603
+        """
+        c_len, q_len = c.size(1), q.size(1)
+        c = F.dropout(c, self.drop_prob, self.training)  # (bs, c_len, hid_size)
+        q = F.dropout(q, self.drop_prob, self.training)  # (bs, q_len, hid_size)
+
+        # Shapes: (batch_size, c_len, q_len)
+        s0 = torch.matmul(c, self.c_weight).expand([-1, -1, q_len])
+        s1 = torch.matmul(q, self.q_weight).transpose(1, 2)\
+                                           .expand([-1, c_len, -1])
+        s2 = torch.matmul(c * self.cq_weight, q.transpose(1, 2))
+        s = s0 + s1 + s2 + self.bias
+
+        return s
+
+
+class BiDAFSelfAttention(nn.Module):
+    def __init__(self, hidden_size, drop_prob=0.1):
+        super(BiDAFSelfAttention, self).__init__()
+        self.drop_prob = drop_prob
+        # self.w1 = nn.Parameter(torch.zeros(hidden_size, 1))
+        # self.w2 = nn.Parameter(torch.zeros(hidden_size, 1))
+        # self.v = nn.Parameter(torch.zeros(hidden_size, 1))
+        self.c_weight = nn.Parameter(torch.zeros(hidden_size, 1))
+        self.q_weight = nn.Parameter(torch.zeros(hidden_size, 1))
+        self.cq_weight = nn.Parameter(torch.zeros(1, 1, hidden_size))
+        for weight in (self.c_weight, self.q_weight, self.cq_weight):
+            nn.init.xavier_uniform_(weight)
+        self.bias = nn.Parameter(torch.zeros(1))
+
+    def forward(self, c, c_mask):
+        # c is shape (batch_size, c_len, 2 * hidden_size)
+        batch_size, c_len, _ = c.size()
+
+        # 1. apply w1 and w2 as described in the paper (need to write it out in matrix form)
+        # FOR NOW, actually just applying w_sim as in the original attention layer
+        s = self.get_similarity_matrix(c, c)  # (batch_size, c_len, c_len)
+
+        # 2. softmax
+        c_mask = c_mask.view(batch_size, c_len, 1)  # (batch_size, c_len, 1)
+        s_softmax = masked_softmax(s, c_mask, dim=2)  # check dim, we're trying to softmax the rows
+
+        # 3. get attention output for every passage word
+        # (bs, c_len, c_len) x (bs, c_len, 2 * hidden_size) => (bs, c_len, 2 * hidden_size)
+        a = torch.bmm(s_softmax, c)
+
+        # 4. concatenate [c, x]
+        x = torch.cat([c, a], dim=2)  # (bs, c_len, 4 * hidden_size)
+        return x
+
+    def get_similarity_matrix(self, c, q):
+        """ Just performing w_sim^T[c_i; q_j; c_i * q_j] except c == q
+        (Copied over from BidafAttention)
         """
         c_len, q_len = c.size(1), q.size(1)
         c = F.dropout(c, self.drop_prob, self.training)  # (bs, c_len, hid_size)
