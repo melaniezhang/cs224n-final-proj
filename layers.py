@@ -117,10 +117,10 @@ class RNNEncoder(nn.Module):
                  drop_prob=0.):
         super(RNNEncoder, self).__init__()
         self.drop_prob = drop_prob
-        self.rnn = nn.LSTM(input_size, hidden_size, num_layers,
-                           batch_first=True,
-                           bidirectional=True,
-                           dropout=drop_prob if num_layers > 1 else 0.)
+        self.rnn = nn.GRU(input_size, hidden_size, num_layers,
+                          batch_first=True,
+                          bidirectional=True,
+                          dropout=drop_prob if num_layers > 1 else 0.)
 
     def forward(self, x, lengths):
         # Save original padded length for use by pad_packed_sequence
