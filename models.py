@@ -58,6 +58,10 @@ class BiDAF(nn.Module):
                                       num_layers=2,
                                       drop_prob=drop_prob)
 
+        self.mod3 = layers.RNNEncoder(input_size=2 * hidden_size,
+                                      hidden_size=hidden_size,
+                                      num_layers=2,
+                                      drop_prob=drop_prob)
         self.out = layers.BiDAFOutput(hidden_size=hidden_size,
                                       drop_prob=drop_prob)
 
@@ -80,7 +84,8 @@ class BiDAF(nn.Module):
         self_att = self.self_att(mod, c_mask)     # (batch_size, c_len, 4 * hidden_size)
 
         mod_2 = self.mod2(self_att, c_len)  # (batch_size, c_len, 2 * hidden_size)
+        mod_3 = self.mod3(mod_2, c_len)     # (batch_size, c_len, 2 * hidden_size)
 
-        out = self.out(att, mod_2, c_mask)  # 2 tensors, each (batch_size, c_len)
+        out = self.out(att, mod_3, c_mask)  # 2 tensors, each (batch_size, c_len)
 
         return out
