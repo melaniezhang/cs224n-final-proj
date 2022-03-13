@@ -267,6 +267,19 @@ class BiDAFSelfAttention(nn.Module):
         return s
 
 
+class MultiHeadSelfAttention(nn.Module):
+    def __init__(self, input_size, num_heads, drop_prob=0.1):
+        super(MultiHeadSelfAttention, self).__init__()
+        self.drop_prob = drop_prob
+        self.multihead_attention = nn.MultiheadAttention(input_size, num_heads)
+
+    def forward(self, x):
+        # x: (batch_size, c_len, 2 * hidden_size)
+        x = x.permute(1, 0, 2)  # (c_len, batch_size, 2 * hidden_size)
+        attn_output, attn_output_weights = self.multihead_attention(x, x, x)
+        return attn_output
+
+
 class BiDAFOutput(nn.Module):
     """Output layer used by BiDAF for question answering.
 
