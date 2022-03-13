@@ -86,7 +86,7 @@ class BiDAF(nn.Module):
                        c_mask, q_mask)    # (batch_size, c_len, 8 * hidden_size)
 
         mod = self.mod(att, c_len)        # (batch_size, c_len, 2 * hidden_size)
-        mod2 = self.mod2(mod, c_len)        # (batch_size, c_len, 2 * hidden_size)
+        mod2 = self.mod_2(mod, c_len)        # (batch_size, c_len, 2 * hidden_size)
 
         self_att = self.self_att(mod2, c_mask)     # (batch_size, c_len, 4 * hidden_size)
 
