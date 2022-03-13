@@ -225,7 +225,12 @@ class BiDAFSelfAttention(nn.Module):
         self.c_weight = nn.Parameter(torch.zeros(hidden_size, 1))
         self.q_weight = nn.Parameter(torch.zeros(hidden_size, 1))
         self.cq_weight = nn.Parameter(torch.zeros(1, 1, hidden_size))
-        for weight in (self.c_weight, self.q_weight, self.cq_weight):
+
+        self.c_weight_2 = nn.Parameter(torch.zeros(hidden_size, 1))
+        self.q_weight_2 = nn.Parameter(torch.zeros(hidden_size, 1))
+        self.cq_weight_2 = nn.Parameter(torch.zeros(1, 1, hidden_size))
+        for weight in (self.c_weight, self.q_weight, self.cq_weight,
+                       self.c_weight_2, self.q_weight_2, self.cq_weight_2):
             nn.init.xavier_uniform_(weight)
         self.bias = nn.Parameter(torch.zeros(1))
 
@@ -235,7 +240,7 @@ class BiDAFSelfAttention(nn.Module):
 
         # 1. apply w1 and w2 as described in the paper (need to write it out in matrix form)
         # FOR NOW, actually just applying w_sim as in the original attention layer
-        s = self.get_similarity_matrix(c, c)  # (batch_size, c_len, c_len)
+        s = self.get_similarity_matrix(c, c, self.c_weight, self.q_weight, self.cq_weight)  # (batch_size, c_len, c_len)
 
         # 2. softmax
         c_mask = c_mask.view(batch_size, c_len, 1)  # (batch_size, c_len, 1)
@@ -245,11 +250,18 @@ class BiDAFSelfAttention(nn.Module):
         # (bs, c_len, c_len) x (bs, c_len, 2 * hidden_size) => (bs, c_len, 2 * hidden_size)
         a = torch.bmm(s_softmax, c)
 
+        # 2nd head
+        s_2 = self.get_similarity_matrix(c, c, self.c_weight_2, self.q_weight_2, self.cq_weight_2)  # (batch_size, c_len, c_len)
+        s_softmax_2 = masked_softmax(s_2, c_mask, dim=2)  # check dim, we're trying to softmax the rows
+        a_2 = torch.bmm(s_softmax_2, c)
+
+        # done
+
         # 4. concatenate [c, x]
-        x = torch.cat([c, a], dim=2)  # (bs, c_len, 4 * hidden_size)
+        x = torch.cat([c, a, a_2], dim=2)  # (bs, c_len, 6 * hidden_size)
         return x
 
-    def get_similarity_matrix(self, c, q):
+    def get_similarity_matrix(self, c, q, c_weight, q_weight, cq_weight):
         """ Just performing w_sim^T[c_i; q_j; c_i * q_j] except c == q
         (Copied over from BidafAttention)
         """
@@ -258,10 +270,10 @@ class BiDAFSelfAttention(nn.Module):
         q = F.dropout(q, self.drop_prob, self.training)  # (bs, q_len, hid_size)
 
         # Shapes: (batch_size, c_len, q_len)
-        s0 = torch.matmul(c, self.c_weight).expand([-1, -1, q_len])
-        s1 = torch.matmul(q, self.q_weight).transpose(1, 2)\
-                                           .expand([-1, c_len, -1])
-        s2 = torch.matmul(c * self.cq_weight, q.transpose(1, 2))
+        s0 = torch.matmul(c, c_weight).expand([-1, -1, q_len])
+        s1 = torch.matmul(q, q_weight).transpose(1, 2)\
+                                      .expand([-1, c_len, -1])
+        s2 = torch.matmul(c * cq_weight, q.transpose(1, 2))
         s = s0 + s1 + s2 + self.bias
 
         return s

@@ -50,24 +50,10 @@ class BiDAF(nn.Module):
                                      num_layers=2,
                                      drop_prob=drop_prob)
 
-        # self.mod_2 = layers.RNNEncoder(input_size=2 * hidden_size,
-        #                                hidden_size=hidden_size,
-        #                                num_layers=2,
-        #                                drop_prob=drop_prob)
-
         self.self_att = layers.BiDAFSelfAttention(hidden_size=2 * hidden_size,
                                                   drop_prob=drop_prob)
 
-        self.multi_head_self_att = layers.MultiHeadSelfAttention(input_size=2 * hidden_size,
-                                                                 num_heads=4,
-                                                                 drop_prob=drop_prob)
-
-        # self.mod_att = layers.RNNEncoder(input_size=4 * hidden_size,
-        #                                  hidden_size=hidden_size,
-        #                                  num_layers=2,
-        #                                  drop_prob=drop_prob)
-
-        self.mod_self_att = layers.RNNEncoder(input_size=2 * hidden_size,
+        self.mod_self_att = layers.RNNEncoder(input_size=6 * hidden_size,
                                               hidden_size=hidden_size,
                                               num_layers=2,
                                               drop_prob=drop_prob)
@@ -97,10 +83,10 @@ class BiDAF(nn.Module):
         mod = self.mod(att, c_len)        # (batch_size, c_len, 2 * hidden_size)
         # mod2 = self.mod_2(mod, c_len)        # (batch_size, c_len, 2 * hidden_size)
 
-        # self_att = self.self_att(mod, c_mask)     # (batch_size, c_len, 4 * hidden_size)
-        multi_self_att = self.multi_head_self_att(mod)  # (batch_size, c_len, 2 * hidden_size)
+        self_att = self.self_att(mod, c_mask)     # (batch_size, c_len, 4 * hidden_size)
+        # multi_self_att = self.multi_head_self_att(mod)  # (batch_size, c_len, 2 * hidden_size)
 
-        mod_self_att = self.mod_self_att(multi_self_att, c_len)  # (batch_size, c_len, 2 * hidden_size)
+        mod_self_att = self.mod_self_att(self_att, c_len)  # (batch_size, c_len, 2 * hidden_size)
         # mod_att_2 = self.mod_att_2(mod_att, c_len)
 
         out = self.out(att, mod_self_att, c_mask)  # 2 tensors, each (batch_size, c_len)
