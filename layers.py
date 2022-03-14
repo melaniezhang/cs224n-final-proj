@@ -229,8 +229,19 @@ class BiDAFSelfAttention(nn.Module):
         self.c_weight_2 = nn.Parameter(torch.zeros(hidden_size, 1))
         self.q_weight_2 = nn.Parameter(torch.zeros(hidden_size, 1))
         self.cq_weight_2 = nn.Parameter(torch.zeros(1, 1, hidden_size))
+
+        self.c_weight_3 = nn.Parameter(torch.zeros(hidden_size, 1))
+        self.q_weight_3 = nn.Parameter(torch.zeros(hidden_size, 1))
+        self.cq_weight_3 = nn.Parameter(torch.zeros(1, 1, hidden_size))
+
+        self.c_weight_4 = nn.Parameter(torch.zeros(hidden_size, 1))
+        self.q_weight_4 = nn.Parameter(torch.zeros(hidden_size, 1))
+        self.cq_weight_4 = nn.Parameter(torch.zeros(1, 1, hidden_size))
+
         for weight in (self.c_weight, self.q_weight, self.cq_weight,
-                       self.c_weight_2, self.q_weight_2, self.cq_weight_2):
+                       self.c_weight_2, self.q_weight_2, self.cq_weight_2,
+                       self.c_weight_3, self.q_weight_3, self.cq_weight_3,
+                       self.c_weight_4, self.q_weight_4, self.cq_weight_4):
             nn.init.xavier_uniform_(weight)
         self.bias = nn.Parameter(torch.zeros(1))
 
@@ -255,10 +266,20 @@ class BiDAFSelfAttention(nn.Module):
         s_softmax_2 = masked_softmax(s_2, c_mask, dim=2)  # check dim, we're trying to softmax the rows
         a_2 = torch.bmm(s_softmax_2, c)
 
+        # 3rd head
+        s_3 = self.get_similarity_matrix(c, c, self.c_weight_3, self.q_weight_3, self.cq_weight_3)  # (batch_size, c_len, c_len)
+        s_softmax_3 = masked_softmax(s_3, c_mask, dim=2)  # check dim, we're trying to softmax the rows
+        a_3 = torch.bmm(s_softmax_3, c)
+
+        # 4th head
+        s_4 = self.get_similarity_matrix(c, c, self.c_weight_4, self.q_weight_4, self.cq_weight_4)  # (batch_size, c_len, c_len)
+        s_softmax_4 = masked_softmax(s_4, c_mask, dim=2)  # check dim, we're trying to softmax the rows
+        a_4 = torch.bmm(s_softmax_4, c)
+
         # done
 
         # 4. concatenate [c, x]
-        x = torch.cat([c, a, a_2], dim=2)  # (bs, c_len, 6 * hidden_size)
+        x = torch.cat([c, a, a_2, a_3, a_4], dim=2)  # (bs, c_len, 4 * hidden_size)
         return x
 
     def get_similarity_matrix(self, c, q, c_weight, q_weight, cq_weight):
